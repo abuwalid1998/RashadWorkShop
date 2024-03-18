@@ -13,15 +13,27 @@ $dbname = "carworkshop";
 $db = new Database($servername . ":" . $port, $username, $password, $dbname);
 $conn = $db->getConnection();
 
-if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST["search_vehicle_id"])) {
-    // Handle search form submission
-    $search_vehicle_id = $_POST["search_vehicle_id"];
+$error_message = ""; // Initialize error message variable
 
-    // Fetch customer and service data based on the provided vehicle ID
-    $searchQuery = "SELECT * FROM car_service_fixed WHERE vehicle_id = '$search_vehicle_id'";
+if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST["search_input"])) {
+
+    $search_input = $_POST["search_input"];
+    $search_type = $_POST["search_type"];
+
+    // Construct the query based on the selected search type
+    if ($search_type === "vehicle_id") {
+        $searchQuery = "SELECT * FROM car_service_fixed WHERE vehicle_id = '$search_input'";
+    } elseif ($search_type === "customer_name") {
+        $searchQuery = "SELECT * FROM car_service_fixed WHERE customer_name LIKE '%$search_input%'";
+    }
+
+    // Execute the query and handle errors
     $result = $conn->query($searchQuery);
-
-    if ($result && $result->num_rows > 0) {
+    
+    if (!$result) {
+        $error_message = "Error executing the search query: " . $conn->error;
+    } elseif ($result->num_rows > 0) {
+        // Fetch data if results are found
         $row = $result->fetch_assoc();
         $customer_name = $row["customer_name"];
         $phone_number = $row["phone_number"];
@@ -35,15 +47,16 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST["search_vehicle_id"])) 
         $order_date = $row["order_date"];
         $oil_price = $row["oil_price"];
         // Fetch individual service details
-        $serviceDetails = [];
-        $serviceDetails[] = ["name" => "فلتر هواء", "price" => $row["air_filter_price"]];
-        $serviceDetails[] = ["name" => "فلتر زيت", "price" => $row["oil_filter_price"]];
-        $serviceDetails[] = ["name" => "فلتر ديزل", "price" => $row["diesel_filter_price"]];
-        $serviceDetails[] = ["name" => "فلتر مكيف", "price" => $row["ac_filter_price"]];
-        $serviceDetails[] = ["name" => "تغيير بوجيات", "price" => $row["sparks_change_price"]];
-        $serviceDetails[] = ["name" => "حزام التايمنغ", "price" => $row["timing_belt_price"]];
+        $serviceDetails = [
+            ["name" => "فلتر هواء", "price" => $row["air_filter_price"]],
+            ["name" => "فلتر زيت", "price" => $row["oil_filter_price"]],
+            ["name" => "فلتر ديزل", "price" => $row["diesel_filter_price"]],
+            ["name" => "فلتر مكيف", "price" => $row["ac_filter_price"]],
+            ["name" => "تغيير بوجيات", "price" => $row["sparks_change_price"]],
+            ["name" => "حزام التايمنغ", "price" => $row["timing_belt_price"]]
+        ];
     } else {
-        $error_message = "No records found for the provided vehicle ID.";
+        $error_message = "No records found for the provided search query.";
     }
 }
 ?>
@@ -56,27 +69,63 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST["search_vehicle_id"])) 
     <title>Search Customer - Car Service</title>
     <link rel="stylesheet" href="styles.css">
     <style>
-        .service-details table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-        }
+.service-details table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+}
 
-        .service-details th, .service-details td {
-            border: 1px solid #ddd;
-            padding: 8px;
-            text-align: left;
-        }
+.service-details th,
+.service-details td {
+    border: 1px solid #ddd;
+    padding: 8px;
+    text-align: left;
+}
 
-        .service-details th {
-            background-color: #f2f2f2;
-        }
-        .service-details table th {
-        text-align: center; /* Aligns table headers to the right */
-      }
-      .service-details table td {
-        text-align: center; /* Aligns table data to the left (default) */
-      }
+.service-details th {
+    background-color: #f2f2f2;
+}
+
+.service-details table th {
+    text-align: center; /* Aligns table headers to the right */
+}
+
+.service-details table td {
+    text-align: center; /* Aligns table data to the left (default) */
+}
+
+/* New styles for search form */
+.container {
+    text-align: center;
+    margin-top: 50px;
+}
+
+form {
+    margin-bottom: 20px;
+}
+
+label {
+    font-weight: bold;
+}
+
+input[type="radio"],
+input[type="text"],
+input[type="submit"] {
+    margin-top: 10px;
+    margin-bottom: 10px;
+}
+
+/* RTL styles */
+.rtl {
+    direction: rtl;
+}
+
+/* Clearfix */
+.clearfix::after {
+    content: "";
+    clear: both;
+    display: table;
+}
     </style>
 </head>
 <body>
@@ -90,6 +139,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST["search_vehicle_id"])) 
                 <li><a href="battery.php">ضمان بطارية السيارة</a></li>
                 <li><a href="add_payment.php">إضافة الدفع</a></li>
                 <li><a href="searchbar.php">مشاهدة البيانات</a></li>
+                <li><a href="batterysearch.php">بحث عن بطارية</a></li>
             </ul>
         </nav>
     </header>
@@ -98,10 +148,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST["search_vehicle_id"])) 
     <h1>بحث عن زبون</h1>
 
     <form action="search.php" method="POST">
-        <label for="search_vehicle_id">رقم المركبة</label>
-        <input type="text" id="search_vehicle_id" name="search_vehicle_id" required>
-        <input type="submit" value="Search">
-    </form>
+    <label for="search_type">بحث عن طريق</label><br>
+    <input type="radio" id="search_vehicle_id" name="search_type" value="vehicle_id" checked>
+    <label for="search_vehicle_id">رقم المركبة</label><br>
+    <input type="radio" id="search_customer_name" name="search_type" value="customer_name">
+    <label for="search_customer_name">أسم العميل</label><br>
+    <input type="text" id="search_input" name="search_input" required>
+    <input type="submit" value="Search">
+</form>
 
     <?php if (isset($error_message)): ?>
         <p class="error"><?php echo $error_message; ?></p>

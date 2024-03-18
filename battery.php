@@ -74,6 +74,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 <li><a href="battery.php">ضمان بطارية السيارة</a></li>
                 <li><a href="add_payment.php">إضافة الدفع</a></li>
                 <li><a href="searchbar.php">مشاهدة البيانات</a></li>
+                <li><a href="batterysearch.php">بحث عن بطارية</a></li>
             </ul>
         </nav>
     </header>
