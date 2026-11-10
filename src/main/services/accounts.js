@@ -3,69 +3,86 @@ const { notFound } = require('../core/errors');
 const { orderLines } = require('../core/catalog');
 const { buildLedger } = require('../core/ledger');
 const { toCents, fromCents } = require('../core/money');
-const { nameKey, vehicleKey, likeContains } = require('../core/normalize');
-
-const SORTS = {
-  recent: 'last_date DESC',
-  balance: 'balance DESC, last_date DESC',
-  name: 'name COLLATE NOCASE ASC',
-  billed: 'billed DESC',
-};
+const { nameKey, vehicleKey } = require('../core/normalize');
 
 const money = (value) => fromCents(toCents(value));
 const firstOf = (list) => String(list ?? '').split(',').find(Boolean) || '';
+const split = (list) => String(list ?? '').split(',').filter(Boolean);
+
+const SORTS = {
+  recent: (a, b) => (a.last_date < b.last_date ? 1 : a.last_date > b.last_date ? -1 : 0),
+  balance: (a, b) => b.balance - a.balance || SORTS.recent(a, b),
+  billed: (a, b) => b.billed - a.billed,
+  name: (a, b) => a.name.localeCompare(b.name, 'ar'),
+};
 
 /**
  * A customer account is every order and battery recorded under the same
  * (normalised) customer name — the grouping the legacy search page used.
  */
 function createAccountsService(db, payments) {
-  const MATCH = `account_key IN (
-    SELECT account_key FROM account_items
-     WHERE account_key LIKE ? ESCAPE '\\' OR vehicle_key LIKE ? ESCAPE '\\' OR phone_number LIKE ? ESCAPE '\\')`;
+  let cache = { revision: -1, rows: [] };
 
-  const matchParams = (term) =>
-    [likeContains(nameKey(term)), likeContains(vehicleKey(term) || term), likeContains(term)];
-
-  function list({ query = '', filter = 'all', sort = 'recent', limit = 60, offset = 0 } = {}) {
-    const term = String(query).trim();
-    const params = term ? matchParams(term) : [];
-    const having = filter === 'debt' ? 'HAVING SUM(remaining) > 0.004'
-      : filter === 'clear' ? 'HAVING SUM(remaining) <= 0.004' : '';
+  /**
+   * Every account with its totals. Computed once per data change and then
+   * searched, sorted and paged in memory, so typing in the search box never
+   * waits on the database.
+   */
+  function all() {
+    const revision = db.revision;
+    if (cache.revision === revision) return cache.rows;
     // With a single MAX(), SQLite takes the bare `customer_name` from the row
     // holding that maximum: the most recent spelling of the customer's name.
-    const grouped = `
+    const rows = db.all(`
       SELECT account_key AS key, customer_name AS name, MAX(date) AS last_date,
              group_concat(DISTINCT NULLIF(phone_number, '')) AS phones,
              group_concat(DISTINCT vehicle_id) AS vehicles,
-             COUNT(*) AS visits, COUNT(DISTINCT vehicle_key) AS vehicle_count,
-             SUM(total) AS billed, SUM(paid) AS paid, SUM(remaining) AS balance
-        FROM account_items ${term ? `WHERE ${MATCH}` : ''}
-       GROUP BY account_key ${having}`;
-    const rows = db.all(
-      `${grouped} ORDER BY ${SORTS[sort] || SORTS.recent} LIMIT ? OFFSET ?`,
-      ...params, Math.min(Number(limit) || 60, 500), Number(offset) || 0);
-    const summary = db.get(
-      `SELECT COUNT(*) AS count, COALESCE(SUM(billed), 0) AS billed, COALESCE(SUM(paid), 0) AS paid,
-              COALESCE(SUM(CASE WHEN balance > 0 THEN balance ELSE 0 END), 0) AS balance
-         FROM (${grouped})`, ...params);
+             group_concat(DISTINCT vehicle_key) AS vehicle_keys,
+             COUNT(*) AS visits, SUM(total) AS billed, SUM(paid) AS paid, SUM(remaining) AS balance
+        FROM account_items GROUP BY account_key`)
+      .map((row) => {
+        const vehicles = split(row.vehicles);
+        return {
+          key: row.key,
+          name: row.name,
+          phone: firstOf(row.phones),
+          phones: row.phones || '',
+          vehicles,
+          vehicle_keys: split(row.vehicle_keys),
+          vehicle_count: vehicles.length,
+          visits: row.visits,
+          last_date: row.last_date,
+          billed: money(row.billed),
+          paid: money(row.paid),
+          balance: money(row.balance),
+        };
+      });
+    cache = { revision, rows };
+    return rows;
+  }
+
+  function list({ query = '', filter = 'all', sort = 'recent', limit = 60, offset = 0 } = {}) {
+    const term = String(query).trim();
+    let rows = all();
+    if (term) {
+      const name = nameKey(term);
+      const vehicle = vehicleKey(term);
+      rows = rows.filter((row) => row.key.includes(name)
+        || (vehicle && row.vehicle_keys.some((key) => key.includes(vehicle)))
+        || row.phones.includes(term));
+    }
+    if (filter === 'debt') rows = rows.filter((row) => row.balance > 0.004);
+    if (filter === 'clear') rows = rows.filter((row) => row.balance <= 0.004);
+    rows = [...rows].sort(SORTS[sort] || SORTS.recent);
+
+    const start = Number(offset) || 0;
+    const sum = (pick) => fromCents(rows.reduce((acc, row) => acc + toCents(pick(row)), 0));
     return {
-      rows: rows.map((row) => ({
-        key: row.key,
-        name: row.name,
-        phone: firstOf(row.phones),
-        vehicles: String(row.vehicles ?? '').split(',').filter(Boolean),
-        vehicle_count: row.vehicle_count,
-        visits: row.visits,
-        last_date: row.last_date,
-        billed: money(row.billed),
-        paid: money(row.paid),
-        balance: money(row.balance),
-      })),
-      count: summary.count,
-      billed: money(summary.billed),
-      paid: money(summary.paid),
-      balance: money(summary.balance),
+      rows: rows.slice(start, start + Math.min(Number(limit) || 60, 500)),
+      count: rows.length,
+      billed: sum((row) => row.billed),
+      paid: sum((row) => row.paid),
+      balance: sum((row) => Math.max(0, row.balance)),
     };
   }
 
@@ -185,28 +202,31 @@ function createAccountsService(db, payments) {
     };
   }
 
-  /** Known customers/vehicles matching what is being typed in a form. */
+  /** Known customer + vehicle pairs matching what is being typed in a form. */
   function suggest({ query = '', limit = 6 } = {}) {
     const term = String(query).trim();
     if (!term) return [];
-    return db.all(
-      `SELECT customer_name, vehicle_id, MAX(date) AS last_date,
-              group_concat(DISTINCT NULLIF(phone_number, '')) AS phones, account_key
-         FROM account_items
-        WHERE account_key LIKE ? ESCAPE '\\' OR vehicle_key LIKE ? ESCAPE '\\'
-        GROUP BY account_key, vehicle_key
-        ORDER BY last_date DESC LIMIT ?`,
-      likeContains(nameKey(term)), likeContains(vehicleKey(term) || term), Math.min(Number(limit) || 6, 20))
-      .map((row) => ({
-        customer_name: row.customer_name,
-        vehicle_id: row.vehicle_id,
-        phone_number: firstOf(row.phones),
-        last_date: row.last_date,
-        account_key: row.account_key,
-      }));
+    const name = nameKey(term);
+    const vehicle = vehicleKey(term);
+    const matches = [];
+    for (const account of [...all()].sort(SORTS.recent)) {
+      const byName = account.key.includes(name);
+      for (const vehicleId of account.vehicles) {
+        if (!byName && !(vehicle && vehicleKey(vehicleId).includes(vehicle))) continue;
+        matches.push({
+          customer_name: account.name,
+          vehicle_id: vehicleId,
+          phone_number: account.phone,
+          last_date: account.last_date,
+          account_key: account.key,
+        });
+        if (matches.length >= Math.min(Number(limit) || 6, 20)) return matches;
+      }
+    }
+    return matches;
   }
 
-  return { list, get, suggest };
+  return { all, list, get, suggest };
 }
 
 module.exports = { createAccountsService };

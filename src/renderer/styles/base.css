@@ -1,0 +1,214 @@
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  font-size: 100%;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--ink);
+  /* Arabic is a connected script: tracking stays at 0, hierarchy comes from
+     weight, size and leading. */
+  font: 400 0.875rem/1.5 var(--font);
+  letter-spacing: 0;
+  /* Physical, so left-to-right number islands still align with the Arabic around them. */
+  text-align: right;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  cursor: default;
+  user-select: none;
+}
+
+#app { height: 100%; }
+
+h1, h2, h3, p { margin: 0; }
+h1 { font-size: 1.5rem; font-weight: 700; line-height: 1.3; }
+h2 { font-size: 1.0625rem; font-weight: 600; line-height: 1.35; }
+h3 { font-size: 0.875rem; font-weight: 600; }
+
+button, input, select, textarea { font: inherit; color: inherit; letter-spacing: inherit; }
+button { cursor: default; }
+a { color: var(--accent-ink); text-decoration: none; }
+
+/* Numbers, plates and dates read left-to-right even inside Arabic text. */
+.num {
+  direction: ltr;
+  unicode-bidi: isolate;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.muted { color: var(--ink-2); }
+.faint { color: var(--ink-3); }
+.selectable { user-select: text; cursor: text; }
+.sr-only {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip-path: inset(50%); white-space: nowrap;
+}
+
+:focus { outline: none; }
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+::selection { background: var(--accent-soft); }
+
+/* Thin overlay-style scrollbars. */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb {
+  background: var(--fill-press);
+  border-radius: 10px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--ink-3); background-clip: content-box; border: 3px solid transparent; }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* ---- App shell ---------------------------------------------------------- */
+
+.shell {
+  display: grid;
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  height: 100%;
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px 10px 12px;
+  background: var(--sidebar);
+  border-inline-end: 1px solid var(--line);
+  -webkit-app-region: drag;
+}
+.sidebar > * { -webkit-app-region: no-drag; }
+:root[data-platform="darwin"] .sidebar { padding-top: 14px; }
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px 16px;
+}
+.brand img { width: 38px; height: 38px; flex: none; filter: drop-shadow(0 2px 5px rgba(11, 79, 216, 0.3)); }
+.brand-name { font-weight: 700; font-size: 1rem; line-height: 1.25; }
+.brand-sub { color: var(--ink-3); font-size: 0.75rem; line-height: 1.3; }
+
+.nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--ink);
+  font-weight: 500;
+  text-align: start;
+  transition: background-color 120ms ease-out, transform var(--press) ease-out;
+}
+.nav-item svg { width: 18px; height: 18px; flex: none; color: var(--accent-ink); }
+.nav-item:hover { background: var(--fill); }
+.nav-item:active { transform: scale(0.98); background: var(--fill-hover); }
+.nav-item[aria-current="page"] { background: var(--accent); color: var(--ink-on-accent); }
+.nav-item[aria-current="page"] svg { color: inherit; }
+.nav-item .count {
+  margin-inline-start: auto;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--ink-3);
+}
+.nav-item[aria-current="page"] .count { color: rgba(255, 255, 255, 0.8); }
+
+.sidebar-spacer { flex: 1; -webkit-app-region: drag; }
+
+.search-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: var(--fill);
+  color: var(--ink-2);
+  text-align: start;
+  transition: background-color 120ms ease-out, transform var(--press) ease-out;
+}
+.search-hint:hover { background: var(--fill-hover); }
+.search-hint:active { transform: scale(0.98); }
+.search-hint svg { width: 16px; height: 16px; }
+.search-hint kbd { margin-inline-start: auto; }
+
+kbd {
+  font: 500 0.6875rem/1 var(--font);
+  padding: 3px 5px;
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--ink-2);
+  box-shadow: 0 0 0 1px var(--line);
+  direction: ltr;
+}
+
+.main {
+  position: relative;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* The scroll container sits under the toolbar so content blurs through it. */
+.view {
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: calc(var(--toolbar-height) + 18px) 28px 40px;
+  scroll-padding-top: var(--toolbar-height);
+}
+.view-inner { max-width: 1240px; margin: 0 auto; }
+
+.toolbar {
+  position: absolute;
+  inset: 0 0 auto 0;
+  z-index: 20;
+  height: var(--toolbar-height);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 28px;
+  background: var(--material);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-app-region: drag;
+  /* Scroll-edge effect: a hairline that only appears once content is under it. */
+  box-shadow: 0 1px 0 transparent;
+  transition: box-shadow 160ms ease-out;
+}
+.toolbar[data-scrolled="true"] { box-shadow: 0 1px 0 var(--line); }
+.toolbar > * { -webkit-app-region: no-drag; }
+:root[data-platform="darwin"] .toolbar { padding-inline-end: 96px; } /* room for the window controls */
+.toolbar-title { font-size: 1.0625rem; font-weight: 700; margin-inline-end: 6px; white-space: nowrap; }
+.toolbar-spacer { flex: 1; align-self: stretch; -webkit-app-region: drag; }
+
+/* View transitions: a short cross-fade; nothing slides across the screen. */
+.view-enter { animation: view-in 220ms var(--ease-out) both; }
+@keyframes view-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .view-enter { animation: fade-in 160ms ease both; }
+  *, *::before, *::after { scroll-behavior: auto !important; }
+}
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+@media (prefers-reduced-transparency: reduce) {
+  .toolbar { -webkit-backdrop-filter: none; backdrop-filter: none; }
+}

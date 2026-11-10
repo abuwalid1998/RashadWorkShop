@@ -130,39 +130,63 @@ const APP_TABLES = `
   );
 `;
 
-const SERVICE_KEY = nameKeySql('customer_name');
-const SERVICE_VEHICLE_KEY = vehicleKeySql('vehicle_id');
-
-/** Indexes are additive: they speed up lookups without touching the data. */
-const INDEXES = `
-  CREATE INDEX IF NOT EXISTS idx_service_order_date ON car_service_fixed (order_date);
-  CREATE INDEX IF NOT EXISTS idx_service_account ON car_service_fixed (${SERVICE_KEY});
-  CREATE INDEX IF NOT EXISTS idx_service_vehicle ON car_service_fixed (${SERVICE_VEHICLE_KEY});
-  CREATE INDEX IF NOT EXISTS idx_battery_account ON battery_warranty (${SERVICE_KEY});
-  CREATE INDEX IF NOT EXISTS idx_battery_vehicle ON battery_warranty (${SERVICE_VEHICLE_KEY});
-`;
-
 /**
- * One uniform shape over both legacy tables — "something a customer was
- * charged for" — so account totals, statements and payments share queries.
+ * `account_items` is one uniform row per "thing a customer was charged for"
+ * (a service order or a battery), with pre-computed search keys. Account
+ * totals, statements, payments and every search read from it.
+ *
+ * It is a lookup table kept in step with the two legacy tables by triggers,
+ * so search never has to normalise names row by row. The triggers use only
+ * built-in SQL functions: they keep working if the file is edited with any
+ * other SQLite tool.
  */
-const ACCOUNT_ITEMS_VIEW = `
-  DROP VIEW IF EXISTS account_items;
-  CREATE VIEW account_items AS
-    SELECT 'service' AS source, order_id AS id,
-           ${SERVICE_KEY} AS account_key, ${SERVICE_VEHICLE_KEY} AS vehicle_key,
-           customer_name, COALESCE(phone_number, '') AS phone_number, vehicle_id,
-           total_price AS total, payment_amount AS paid, remaining_amount AS remaining,
-           COALESCE(order_date, date_of_change, '') AS date
-      FROM car_service_fixed
-    UNION ALL
-    SELECT 'battery' AS source, battery_warranty.rowid AS id,
-           ${SERVICE_KEY} AS account_key, ${SERVICE_VEHICLE_KEY} AS vehicle_key,
-           customer_name, COALESCE(phone_number, '') AS phone_number, vehicle_id,
-           price AS total, payment_amount AS paid, remaining_amount AS remaining,
-           COALESCE(order_date, purchase_date, '') AS date
-      FROM battery_warranty;
+const ITEM_COLUMNS = 'source, id, account_key, vehicle_key, customer_name, phone_number, vehicle_id, total, paid, remaining, date';
+
+const ITEM_VALUES = {
+  service: (row) => `'service', ${row}order_id,
+    ${nameKeySql(`${row}customer_name`)}, ${vehicleKeySql(`${row}vehicle_id`)},
+    COALESCE(${row}customer_name, ''), COALESCE(${row}phone_number, ''), COALESCE(${row}vehicle_id, ''),
+    ${row}total_price, ${row}payment_amount, ${row}remaining_amount,
+    COALESCE(${row}order_date, ${row}date_of_change, '')`,
+  battery: (row) => `'battery', ${row}rowid,
+    ${nameKeySql(`${row}customer_name`)}, ${vehicleKeySql(`${row}vehicle_id`)},
+    COALESCE(${row}customer_name, ''), COALESCE(${row}phone_number, ''), COALESCE(${row}vehicle_id, ''),
+    ${row}price, ${row}payment_amount, ${row}remaining_amount,
+    COALESCE(${row}order_date, ${row}purchase_date, '')`,
+};
+
+const ACCOUNT_ITEMS = `
+  CREATE TABLE IF NOT EXISTS account_items (
+    source TEXT NOT NULL,
+    id INTEGER NOT NULL,
+    account_key TEXT NOT NULL,
+    vehicle_key TEXT NOT NULL,
+    customer_name TEXT NOT NULL,
+    phone_number TEXT NOT NULL,
+    vehicle_id TEXT NOT NULL,
+    total REAL NOT NULL,
+    paid REAL NOT NULL,
+    remaining REAL NOT NULL,
+    date TEXT NOT NULL,
+    PRIMARY KEY (source, id)
+  ) WITHOUT ROWID;
+  CREATE INDEX IF NOT EXISTS idx_items_account ON account_items (account_key, date);
+  CREATE INDEX IF NOT EXISTS idx_items_vehicle ON account_items (vehicle_key, date);
+  CREATE INDEX IF NOT EXISTS idx_items_date ON account_items (date);
+  CREATE INDEX IF NOT EXISTS idx_service_order_date ON car_service_fixed (order_date);
 `;
+
+function itemTriggers(source, table, idColumn) {
+  const insert = `INSERT OR REPLACE INTO account_items (${ITEM_COLUMNS}) VALUES (${ITEM_VALUES[source]('NEW.')});`;
+  const remove = `DELETE FROM account_items WHERE source = '${source}' AND id = OLD.${idColumn};`;
+  return `
+    DROP TRIGGER IF EXISTS items_${source}_insert;
+    DROP TRIGGER IF EXISTS items_${source}_update;
+    DROP TRIGGER IF EXISTS items_${source}_delete;
+    CREATE TRIGGER items_${source}_insert AFTER INSERT ON ${table} BEGIN ${insert} END;
+    CREATE TRIGGER items_${source}_update AFTER UPDATE ON ${table} BEGIN ${remove} ${insert} END;
+    CREATE TRIGGER items_${source}_delete AFTER DELETE ON ${table} BEGIN ${remove} END;`;
+}
 
 const SOURCES = {
   service: { table: 'car_service_fixed', id: 'order_id', total: 'total_price', date: "COALESCE(order_date, date_of_change, '')" },
@@ -245,6 +269,28 @@ function reconcileLedger(db) {
 }
 
 /**
+ * Make sure `account_items` mirrors the legacy tables. Triggers keep it in
+ * step from here on; a full rebuild only happens when they could not have
+ * (first launch after a migration or restore).
+ * @returns {boolean} whether a rebuild was needed
+ */
+function syncAccountItems(db) {
+  const fingerprint = (rows) => rows.map((r) => `${r.source}:${r.n}:${toCents(r.total)}:${toCents(r.remaining)}`).sort().join('|');
+  const actual = fingerprint(db.all(`
+    SELECT 'service' AS source, COUNT(*) AS n, TOTAL(total_price) AS total, TOTAL(remaining_amount) AS remaining FROM car_service_fixed
+    UNION ALL
+    SELECT 'battery', COUNT(*), TOTAL(price), TOTAL(remaining_amount) FROM battery_warranty`).filter((r) => r.n > 0));
+  const indexed = fingerprint(db.all(
+    'SELECT source, COUNT(*) AS n, TOTAL(total) AS total, TOTAL(remaining) AS remaining FROM account_items GROUP BY source'));
+  if (actual === indexed) return false;
+  db.exec(`
+    DELETE FROM account_items;
+    INSERT INTO account_items (${ITEM_COLUMNS}) SELECT ${ITEM_VALUES.service('')} FROM car_service_fixed;
+    INSERT INTO account_items (${ITEM_COLUMNS}) SELECT ${ITEM_VALUES.battery('battery_warranty.')} FROM battery_warranty;`);
+  return true;
+}
+
+/**
  * Records whose stored remaining amount is not total − paid − discounts.
  * The legacy "add payment" page subtracted each payment twice, so migrated
  * data usually has some. They are carried as "adjust" ledger entries.
@@ -284,10 +330,12 @@ function ensureSchema(db) {
       fillMissingAmounts(db, name);
     }
     db.exec(APP_TABLES);
-    db.exec(INDEXES);
-    db.exec(ACCOUNT_ITEMS_VIEW);
-    return { reconciled: reconcileLedger(db) };
+    db.exec(ACCOUNT_ITEMS);
+    db.exec(itemTriggers('service', 'car_service_fixed', 'order_id'));
+    db.exec(itemTriggers('battery', 'battery_warranty', 'rowid'));
+    const rebuilt = syncAccountItems(db);
+    return { reconciled: reconcileLedger(db), rebuilt };
   });
 }
 
-module.exports = { ensureSchema, reconcileLedger, ledgerHealth, recalculateRemaining, SOURCES, LEGACY_TABLES, SERVICE_KEY, SERVICE_VEHICLE_KEY };
+module.exports = { ensureSchema, reconcileLedger, ledgerHealth, recalculateRemaining, SOURCES, LEGACY_TABLES };

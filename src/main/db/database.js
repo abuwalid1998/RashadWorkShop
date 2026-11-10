@@ -64,6 +64,14 @@ class Database {
     }
   }
 
+  /**
+   * Changes whenever any row is written on this connection (triggers
+   * included). Services use it to know when a cached result is stale.
+   */
+  get revision() {
+    return this.get('SELECT total_changes() AS n').n;
+  }
+
   tableExists(name) {
     return Boolean(this.get("SELECT 1 AS ok FROM sqlite_master WHERE type = 'table' AND name = ?", name));
   }

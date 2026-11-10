@@ -4,7 +4,6 @@ const { createValidator } = require('../core/validate');
 const { toCents, fromCents } = require('../core/money');
 const { today, withCurrentTime, addMonths, daysBetween, datePart, now } = require('../core/dates');
 const { nameKey, vehicleKey, likeContains } = require('../core/normalize');
-const { SERVICE_KEY, SERVICE_VEHICLE_KEY } = require('../db/schema');
 
 const SELECT = 'SELECT battery_warranty.rowid AS id, * FROM battery_warranty';
 
@@ -16,6 +15,7 @@ function present(row, day = today()) {
   const daysLeft = expires ? daysBetween(day, expires) : 0;
   return {
     ...row,
+    account_key: nameKey(row.customer_name),
     expires_on: expires,
     days_left: daysLeft,
     warranty_status: !expires || daysLeft < 0 ? 'expired' : daysLeft <= 30 ? 'expiring' : 'active',
@@ -43,10 +43,12 @@ function createBatteriesService(db, payments) {
     const params = [];
     const term = String(query).trim();
     if (term) {
-      where.push(`(${SERVICE_KEY} LIKE ? ESCAPE '\\' OR ${SERVICE_VEHICLE_KEY} LIKE ? ESCAPE '\\'
-                  OR battery_type LIKE ? ESCAPE '\\' OR phone_number LIKE ? ESCAPE '\\')`);
-      params.push(likeContains(nameKey(term)), likeContains(vehicleKey(term) || term),
-        likeContains(term), likeContains(term));
+      where.push(`(battery_type LIKE ? ESCAPE '\\' OR battery_warranty.rowid IN (
+                    SELECT id FROM account_items
+                     WHERE source = 'battery' AND (account_key LIKE ? ESCAPE '\\'
+                        OR vehicle_key LIKE ? ESCAPE '\\' OR phone_number LIKE ? ESCAPE '\\')))`);
+      params.push(likeContains(term), likeContains(nameKey(term)), likeContains(vehicleKey(term) || term),
+        likeContains(term));
     }
     if (status === 'unpaid') where.push('remaining_amount > 0.004');
     const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
@@ -91,7 +93,7 @@ function createBatteriesService(db, payments) {
         payments.record({
           lines: [{ source: 'battery', id, cash: paid, discount: 0 }],
           paidAt: withCurrentTime(paymentDay),
-          note: 'دفعة عند الشراء',
+          note: 'عند الشراء',
         });
       }
       return get(id);

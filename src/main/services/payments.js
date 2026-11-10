@@ -121,6 +121,39 @@ function createPaymentsService(db) {
     });
   }
 
+  /**
+   * What a payment would do, without saving it: the open items, how the
+   * amount spreads across them, and what stays owed. Drives the live
+   * breakdown in the payment sheet.
+   */
+  function preview({ accountKey, vehicle = '', target = null, amount = 0, settle = false } = {}) {
+    const key = String(accountKey ?? '');
+    const everything = openItems(key);
+    const scopedTarget = target && SOURCES[target.source] ? target : null;
+    const items = openItems(key, { vehicle, target: scopedTarget });
+    const due = openBalance(items);
+    const cash = fromCents(Math.min(Math.max(0, toCents(amount)), toCents(due)));
+    const result = allocatePayment(items, cash, { settle: Boolean(settle) });
+    const byVehicle = new Map();
+    for (const item of everything) {
+      const entry = byVehicle.get(item.vehicle_id) || { vehicle_id: item.vehicle_id, due: 0 };
+      entry.due = fromCents(toCents(entry.due) + toCents(item.remaining));
+      byVehicle.set(item.vehicle_id, entry);
+    }
+    return {
+      name: everything.length ? everything[everything.length - 1].customer_name : '',
+      accountDue: openBalance(everything),
+      vehicles: [...byVehicle.values()],
+      items,
+      due,
+      lines: result.lines,
+      cash: result.cash,
+      discount: result.discount,
+      after: fromCents(toCents(due) - toCents(result.cash) - toCents(result.discount)),
+      exceeds: toCents(amount) > toCents(due),
+    };
+  }
+
   /** Delete a whole receipt, giving the money back to the items it paid. */
   function removeReceipt(receiptNo) {
     const rows = db.all('SELECT * FROM payments WHERE receipt_no = ?', Number(receiptNo));
@@ -146,38 +179,49 @@ function createPaymentsService(db) {
     });
   }
 
-  /** Receipts, newest first: one entry per receipt with its totals. */
+  /**
+   * Receipts, latest recorded first: one entry per receipt with its totals.
+   * Paging walks the receipt-number index, so a page costs the same whether
+   * there are a hundred receipts or a hundred thousand.
+   */
   function list({ query = '', kind = 'all', limit = 60, offset = 0 } = {}) {
+    // A receipt is all of one kind, so filtering rows filters receipts.
     const where = ["p.kind <> 'adjust'"];
     const params = [];
+    if (kind === 'settlement') where.push('p.settlement_id IS NOT NULL');
+    if (kind === 'opening') where.push("p.kind = 'opening'");
+    if (kind === 'payment') where.push("p.kind = 'payment' AND p.settlement_id IS NULL");
     const term = String(query).trim();
     if (term) {
-      where.push(`(i.account_key LIKE ? ESCAPE '\\' OR i.vehicle_key LIKE ? ESCAPE '\\' OR p.receipt_no = ?)`);
-      params.push(likeContains(nameKey(term)), likeContains(vehicleKey(term) || term),
-        /^#?\d+$/.test(term) ? Number(term.replace('#', '')) : -1);
+      where.push(`(p.receipt_no = ? OR EXISTS (
+        SELECT 1 FROM account_items i WHERE i.source = p.source AND i.id = p.ref_id
+           AND (i.account_key LIKE ? ESCAPE '\\' OR i.vehicle_key LIKE ? ESCAPE '\\')))`);
+      params.push(/^#?\d+$/.test(term) ? Number(term.replace('#', '')) : -1,
+        likeContains(nameKey(term)), likeContains(vehicleKey(term) || term));
     }
-    const having = kind === 'settlement' ? 'HAVING MAX(p.settlement_id) IS NOT NULL'
-      : kind === 'opening' ? "HAVING SUM(p.kind = 'opening') > 0"
-        : kind === 'payment' ? "HAVING SUM(p.kind = 'opening') = 0" : '';
-    const grouped = `
-      SELECT p.receipt_no, MAX(p.paid_at) AS paid_at, MAX(p.note) AS note,
-             MAX(p.settlement_id) AS settlement_id,
-             SUM(CASE WHEN p.kind IN ${CASH_KINDS} THEN p.amount ELSE 0 END) AS cash,
-             SUM(CASE WHEN p.kind = 'discount' THEN p.amount ELSE 0 END) AS discount,
-             MAX(p.kind = 'opening') AS is_opening,
-             COUNT(DISTINCT p.source || ':' || p.ref_id) AS item_count,
-             MAX(i.customer_name) AS customer_name, MAX(i.account_key) AS account_key,
-             group_concat(DISTINCT i.vehicle_id) AS vehicles
-        FROM payments p
-        LEFT JOIN account_items i ON i.source = p.source AND i.id = p.ref_id
-       WHERE ${where.join(' AND ')}
-       GROUP BY p.receipt_no ${having}`;
+    const clause = where.join(' AND ');
+
     const rows = db.all(
-      `${grouped} ORDER BY paid_at DESC, receipt_no DESC LIMIT ? OFFSET ?`,
+      `WITH page AS (
+         SELECT DISTINCT p.receipt_no FROM payments p WHERE ${clause}
+          ORDER BY p.receipt_no DESC LIMIT ? OFFSET ?)
+       SELECT p.receipt_no, MAX(p.paid_at) AS paid_at, MAX(p.note) AS note,
+              MAX(p.settlement_id) AS settlement_id,
+              SUM(CASE WHEN p.kind IN ${CASH_KINDS} THEN p.amount ELSE 0 END) AS cash,
+              SUM(CASE WHEN p.kind = 'discount' THEN p.amount ELSE 0 END) AS discount,
+              MAX(p.kind = 'opening') AS is_opening,
+              MAX(i.customer_name) AS customer_name, MAX(i.account_key) AS account_key,
+              group_concat(DISTINCT i.vehicle_id) AS vehicles
+         FROM page
+         JOIN payments p ON p.receipt_no = page.receipt_no AND p.kind <> 'adjust'
+         LEFT JOIN account_items i ON i.source = p.source AND i.id = p.ref_id
+        GROUP BY p.receipt_no ORDER BY p.receipt_no DESC`,
       ...params, Math.min(Number(limit) || 60, 500), Number(offset) || 0);
     const summary = db.get(
-      `SELECT COUNT(*) AS count, COALESCE(SUM(cash), 0) AS cash, COALESCE(SUM(discount), 0) AS discount
-         FROM (${grouped})`, ...params);
+      `SELECT COUNT(DISTINCT p.receipt_no) AS count,
+              COALESCE(SUM(CASE WHEN p.kind IN ${CASH_KINDS} THEN p.amount ELSE 0 END), 0) AS cash,
+              COALESCE(SUM(CASE WHEN p.kind = 'discount' THEN p.amount ELSE 0 END), 0) AS discount
+         FROM payments p WHERE ${clause}`, ...params);
     return {
       rows,
       count: summary.count,
@@ -198,7 +242,7 @@ function createPaymentsService(db) {
       .map((row) => ({ ...row, items: JSON.parse(row.items_json || '[]') }));
   }
 
-  return { record, create, removeReceipt, list, openItems, getSettlement, listSettlements };
+  return { record, create, preview, removeReceipt, list, openItems, getSettlement, listSettlements };
 }
 
 module.exports = { createPaymentsService };

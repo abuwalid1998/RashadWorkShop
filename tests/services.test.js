@@ -200,3 +200,49 @@ test('dashboard counts today only (the legacy page matched the day of any month)
   assert.equal(data.monthly.at(-1).billed, 360);
   assert.equal(data.serviceMix[0].key, 'oil');
 });
+
+test('the search index follows every change, even edits made outside the app', () => {
+  const app = createTestApp();
+  const created = app.orders.create(order({ customer_name: 'سامي النجار', vehicle_id: '11-222-33' }));
+  assert.equal(app.orders.list({ query: 'النجار' }).count, 1);
+
+  app.orders.update(created.order_id, order({ customer_name: 'رامي عيسى', vehicle_id: '44-555-66' }));
+  assert.equal(app.orders.list({ query: 'النجار' }).count, 0);
+  assert.equal(app.orders.list({ query: '4455566' }).count, 1);
+  assert.equal(app.accounts.list({ query: 'رامي' }).rows[0].balance, 180);
+
+  // Another SQLite tool edits the legacy table directly: triggers keep up.
+  app.db.exec("UPDATE car_service_fixed SET customer_name = 'خالد العلي', remaining_amount = 50");
+  assert.equal(app.accounts.list({ query: 'خالد' }).rows[0].balance, 50);
+  app.db.exec('DELETE FROM car_service_fixed');
+  assert.equal(app.accounts.list().count, 0);
+  assert.equal(app.dashboard.get().empty, true);
+});
+
+test('quick suggestions match by name or by plate', () => {
+  const app = createTestApp();
+  app.orders.create(order({ customer_name: 'أحمد خليل', vehicle_id: '12-345-67', phone_number: '0599000111' }));
+  app.orders.create(order({ customer_name: 'أحمد خليل', vehicle_id: '98-765-43' }));
+  assert.equal(app.accounts.suggest({ query: 'احمد' }).length, 2);
+  const [byPlate] = app.accounts.suggest({ query: '98765' });
+  assert.equal(byPlate.vehicle_id, '98-765-43');
+  assert.equal(byPlate.phone_number, '0599000111');
+  assert.deepEqual(app.accounts.suggest({ query: 'zzz' }), []);
+});
+
+test('receipts list pages, filters by kind and searches by customer', () => {
+  const app = createTestApp();
+  app.orders.create(order({ payment_amount: 80 }));
+  app.orders.create(order({ customer_name: 'خالد', vehicle_id: '5-5-5' }));
+  app.payments.create({ accountKey: KEY, amount: 100 }); // clears the balance -> settlement
+  app.payments.create({ accountKey: nameKey('خالد'), amount: 30 });
+
+  const all = app.payments.list();
+  assert.equal(all.count, 3);
+  assert.equal(all.cash, 210);
+  assert.equal(all.rows[0].customer_name, 'خالد');
+  assert.equal(app.payments.list({ kind: 'settlement' }).count, 1);
+  assert.equal(app.payments.list({ kind: 'payment' }).count, 2);
+  assert.equal(app.payments.list({ query: 'خالد' }).count, 1);
+  assert.equal(app.payments.list({ limit: 1, offset: 1 }).rows.length, 1);
+});

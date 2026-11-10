@@ -15,7 +15,7 @@ function createServices(db) {
   const orders = createOrdersService(db, payments);
   const batteries = createBatteriesService(db, payments);
   const accounts = createAccountsService(db, payments);
-  const dashboard = createDashboardService(db, batteries);
+  const dashboard = createDashboardService(db, batteries, accounts);
   const settings = createSettingsService(db);
   const trash = createTrashService(db);
   trash.prune();

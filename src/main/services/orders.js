@@ -5,7 +5,6 @@ const { SERVICE_ITEMS, PRICE_COLUMNS, orderLines } = require('../core/catalog');
 const { toCents, fromCents, sum } = require('../core/money');
 const { today, withCurrentTime, datePart, now } = require('../core/dates');
 const { nameKey, vehicleKey, likeContains } = require('../core/normalize');
-const { SERVICE_KEY, SERVICE_VEHICLE_KEY } = require('../db/schema');
 
 const SORTS = {
   recent: 'order_date DESC, order_id DESC',
@@ -14,7 +13,8 @@ const SORTS = {
   remaining: 'remaining_amount DESC, order_id DESC',
 };
 
-const present = (row) => ({ ...row, lines: orderLines(row) });
+/** Add what the UI needs beyond the stored columns. */
+const present = (row) => ({ ...row, lines: orderLines(row), account_key: nameKey(row.customer_name) });
 
 /** Read and validate the fields shared by create and update. */
 function readOrderInput(input) {
@@ -40,9 +40,11 @@ function createOrdersService(db, payments) {
     const term = String(query).trim();
     if (term) {
       const idMatch = /^#?\d+$/.test(term) ? Number(term.replace('#', '')) : -1;
-      where.push(`(${SERVICE_KEY} LIKE ? ESCAPE '\\' OR ${SERVICE_VEHICLE_KEY} LIKE ? ESCAPE '\\'
-                  OR phone_number LIKE ? ESCAPE '\\' OR order_id = ?)`);
-      params.push(likeContains(nameKey(term)), likeContains(vehicleKey(term) || term), likeContains(term), idMatch);
+      where.push(`(order_id = ? OR order_id IN (
+                    SELECT id FROM account_items
+                     WHERE source = 'service' AND (account_key LIKE ? ESCAPE '\\'
+                        OR vehicle_key LIKE ? ESCAPE '\\' OR phone_number LIKE ? ESCAPE '\\')))`);
+      params.push(idMatch, likeContains(nameKey(term)), likeContains(vehicleKey(term) || term), likeContains(term));
     }
     if (status === 'unpaid') where.push('remaining_amount > 0.004');
     if (status === 'paid') where.push('remaining_amount <= 0.004');
@@ -101,7 +103,7 @@ function createOrdersService(db, payments) {
         payments.record({
           lines: [{ source: 'service', id, cash: paid, discount: 0 }],
           paidAt: withCurrentTime(paymentDay),
-          note: 'دفعة عند الطلب',
+          note: 'عند الطلب',
         });
       }
       return get(id);
@@ -155,8 +157,9 @@ function createOrdersService(db, payments) {
     const key = vehicleKey(vehicleId);
     if (!key) return null;
     const row = db.get(
-      `SELECT * FROM car_service_fixed WHERE ${SERVICE_VEHICLE_KEY} = ?
-        ORDER BY order_date DESC, order_id DESC LIMIT 1`, key);
+      `SELECT * FROM car_service_fixed WHERE order_id = (
+         SELECT id FROM account_items WHERE source = 'service' AND vehicle_key = ?
+          ORDER BY date DESC, id DESC LIMIT 1)`, key);
     return row ? present(row) : null;
   }
 

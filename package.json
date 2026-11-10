@@ -15,7 +15,7 @@
     "test": "node --test --no-warnings --test-reporter=spec \"tests/*.test.js\"",
     "migrate": "node scripts/migrate-mysql-to-sqlite.js",
     "seed:demo": "node scripts/run-with-electron.js scripts/seed-demo.js",
-    "icons": "node scripts/make-icons.js",
+    "icons": "electron scripts/make-icons.js",
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
     "dist:win": "electron-builder --win",
@@ -29,5 +29,63 @@
   "devDependencies": {
     "electron": "^45.2.3",
     "electron-builder": "^26.18.0"
+  },
+  "build": {
+    "appId": "com.rashadworkshop.desktop",
+    "productName": "Rashad Workshop",
+    "copyright": "Copyright © 2026 Rashad Workshop",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Rashad Workshop",
+      "artifactName": "RashadWorkshop-Setup-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "RashadWorkshop-Portable-${version}.${ext}"
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.business",
+      "artifactName": "RashadWorkshop-${version}-${arch}.${ext}"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Office",
+      "maintainer": "Rashad Workshop",
+      "artifactName": "RashadWorkshop-${version}-${arch}.${ext}"
+    }
   }
 }
