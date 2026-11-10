@@ -1,0 +1,33 @@
+{
+  "name": "rashad-workshop",
+  "productName": "Rashad Workshop",
+  "version": "2.0.0",
+  "description": "ورشة رشاد — إدارة طلبات الصيانة، الحسابات، المدفوعات وضمان البطاريات. تطبيق سطح مكتب يعمل بدون خادم.",
+  "author": "Amjad Khaliliah",
+  "license": "UNLICENSED",
+  "private": true,
+  "main": "src/main/main.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test --no-warnings --test-reporter=spec \"tests/*.test.js\"",
+    "migrate": "node scripts/migrate-mysql-to-sqlite.js",
+    "seed:demo": "node scripts/run-with-electron.js scripts/seed-demo.js",
+    "icons": "node scripts/make-icons.js",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win",
+    "dist:mac": "electron-builder --mac",
+    "dist:linux": "electron-builder --linux"
+  },
+  "dependencies": {
+    "htm": "^3.1.1",
+    "mysql2": "^3.24.6"
+  },
+  "devDependencies": {
+    "electron": "^45.2.3",
+    "electron-builder": "^26.18.0"
+  }
+}
