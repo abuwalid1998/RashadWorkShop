@@ -1,4 +1,4 @@
-import { html, useEffect, useState } from '../lib/preact.js';
+import { html, useEffect, useRef, useState } from '../lib/preact.js';
 import { call } from '../lib/api.js';
 import { getState, invalidate, toast } from '../lib/store.js';
 import * as fmt from '../lib/format.js';
@@ -42,15 +42,33 @@ function OrderFormBody({ order, prefill }) {
     : total - paid;
 
   // Knowing the vehicle is enough to recall the customer and the last service.
+  const [oilTypes, setOilTypes] = useState([]);
+  // What the form filled in by itself, so it can tell that apart from typing.
+  const autoOil = useRef('');
+  const values = useRef(form.values);
+  values.current = form.values;
+
+  useEffect(() => {
+    call('orders.oilTypes').then(setOilTypes, () => {});
+  }, []);
+
+  /** Fill the oil this car took last time, unless the user typed their own. */
+  const fillOil = (last) => {
+    const current = values.current.oil_type;
+    if (current && current !== autoOil.current) return;
+    autoOil.current = last?.usual_oil_type || '';
+    form.set('oil_type', autoOil.current);
+  };
+
   const lookupVehicle = async (vehicle) => {
     if (editing || !vehicle.trim()) return;
     const last = await call('orders.lastForVehicle', { vehicle }).catch(() => null);
     setLastVisit(last);
+    fillOil(last);
     if (last) {
       form.patch({
         customer_name: form.values.customer_name || last.customer_name,
         phone_number: form.values.phone_number || last.phone_number || '',
-        oil_type: form.values.oil_type || last.oil_type || '',
       });
     }
   };
@@ -132,7 +150,14 @@ function OrderFormBody({ order, prefill }) {
 
         <section>
           <h3>الخدمات</h3>
-          <${TextInput} form=${form} name="oil_type" label="نوع الزيت" placeholder="مثال: 5W-30" />
+          <${TextInput} form=${form} name="oil_type" label="نوع الزيت" placeholder="مثال: 5W-30"
+            hint=${!editing && lastVisit?.usual_oil_type && form.values.oil_type === lastVisit.usual_oil_type
+    ? 'الزيت المعتاد لهذه السيارة' : ''} />
+          ${oilTypes.length > 0 && html`<div class="oil-picks" role="group" aria-label="أنواع الزيت المستخدمة سابقاً">
+            ${oilTypes.map((name) => html`<${Button} key=${name} size="small"
+              variant=${form.values.oil_type === name ? 'tinted' : ''}
+              onClick=${() => form.set('oil_type', name)}><span class="num">${name}</span><//>`)}
+          </div>`}
           <div class="service-prices">
             ${catalog.map((item) => html`<label class="service-row" key=${item.column}>
               <span>${item.label}</span>

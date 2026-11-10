@@ -160,10 +160,30 @@ function createOrdersService(db, payments) {
       `SELECT * FROM car_service_fixed WHERE order_id = (
          SELECT id FROM account_items WHERE source = 'service' AND vehicle_key = ?
           ORDER BY date DESC, id DESC LIMIT 1)`, key);
-    return row ? present(row) : null;
+    if (!row) return null;
+    // The oil this car takes: from its latest visit that included oil, since
+    // the very last visit may have been for something else.
+    const oil = db.get(
+      `SELECT oil_type FROM car_service_fixed
+        WHERE TRIM(COALESCE(oil_type, '')) <> '' AND order_id IN (
+          SELECT id FROM account_items WHERE source = 'service' AND vehicle_key = ?)
+        ORDER BY order_date DESC, order_id DESC LIMIT 1`, key);
+    return { ...present(row), usual_oil_type: oil ? oil.oil_type.trim() : '' };
   }
 
-  return { list, get, create, update, remove, lastForVehicle };
+  /**
+   * Oil types typed before, most used first — offered as one-click choices
+   * so the same oil is never typed twice. Spelling/case variants count once.
+   */
+  function oilTypes(limit = 8) {
+    return db.all(
+      `SELECT oil_type AS name, COUNT(*) AS uses, MAX(order_date) AS last_used
+         FROM car_service_fixed WHERE TRIM(COALESCE(oil_type, '')) <> ''
+        GROUP BY lower(trim(oil_type)) ORDER BY uses DESC, last_used DESC LIMIT ?`,
+      Math.min(Number(limit) || 8, 30)).map((row) => row.name.trim());
+  }
+
+  return { list, get, create, update, remove, lastForVehicle, oilTypes };
 }
 
 module.exports = { createOrdersService };

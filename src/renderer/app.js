@@ -58,6 +58,7 @@ function Sidebar({ route, navigate, settings }) {
       <${Icon} name="search" /><span>بحث سريع</span><kbd>${mod} K</kbd>
     </button>
     ${item(SETTINGS)}
+    <div class="credit">تطوير <span lang="en" dir="ltr">Amjad Khaliliah</span></div>
   </nav>`;
 }
 

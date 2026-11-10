@@ -246,3 +246,15 @@ test('receipts list pages, filters by kind and searches by customer', () => {
   assert.equal(app.payments.list({ query: 'خالد' }).count, 1);
   assert.equal(app.payments.list({ limit: 1, offset: 1 }).rows.length, 1);
 });
+
+test('oil types already used are remembered, most used first, variants merged', () => {
+  const app = createTestApp();
+  app.orders.create(order({ oil_type: '10W-40' }));
+  app.orders.create(order({ oil_type: '5W-30' }));
+  app.orders.create(order({ oil_type: ' 5w-30 ' }));
+  app.orders.create(order({ oil_type: '' }));
+  assert.deepEqual(app.orders.oilTypes().map((t) => t.toUpperCase()), ['5W-30', '10W-40']);
+  // The last visit had no oil; the car's usual oil comes from the one before.
+  assert.equal(app.orders.lastForVehicle('1234567').oil_type, '');
+  assert.equal(app.orders.lastForVehicle('1234567').usual_oil_type, '5w-30');
+});

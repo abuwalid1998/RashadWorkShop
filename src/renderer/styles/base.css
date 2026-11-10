@@ -126,6 +126,9 @@ a { color: var(--accent-ink); text-decoration: none; }
 }
 .nav-item[aria-current="page"] .count { color: rgba(255, 255, 255, 0.8); }
 
+.credit { padding: 8px 10px 0; color: var(--ink-3); font-size: 0.6875rem; text-align: center; }
+.credit span { font-weight: 600; unicode-bidi: isolate; }
+
 .sidebar-spacer { flex: 1; -webkit-app-region: drag; }
 
 .search-hint {
