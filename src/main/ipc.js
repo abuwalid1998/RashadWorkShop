@@ -96,8 +96,24 @@ function createHandlers(context) {
     'maintenance.info': () => services().maintenance.info(),
     'maintenance.fixRemaining': () => services().maintenance.fixRemaining(),
     'maintenance.openBackups': async () => {
-      fs.mkdirSync(context.backupsDir, { recursive: true });
-      return { error: await shell.openPath(context.backupsDir) };
+      const folder = services().maintenance.backupFolder();
+      fs.mkdirSync(folder, { recursive: true });
+      return { error: await shell.openPath(folder) };
+    },
+    'maintenance.setBackupEnabled': ({ enabled }) => services().maintenance.setBackupEnabled(Boolean(enabled)),
+    'maintenance.chooseBackupFolder': async () => {
+      const { canceled, filePaths } = await dialog.showOpenDialog(parent(), {
+        title: 'اختر مجلد النسخ الاحتياطية اليومية',
+        defaultPath: services().maintenance.backupFolder(),
+        properties: ['openDirectory', 'createDirectory'],
+      });
+      if (canceled || !filePaths.length) return { changed: false };
+      try {
+        services().maintenance.setBackupFolder(filePaths[0]);
+      } catch {
+        throw new AppError('تعذّرت الكتابة في هذا المجلد. اختر مجلداً آخر.', { code: 'bad_folder' });
+      }
+      return { changed: true, folder: filePaths[0] };
     },
 
     'maintenance.backup': async () => {

@@ -5,7 +5,7 @@ name: Build installers
 on:
   workflow_dispatch:
   push:
-    branches: [New-Update-by-amjad]
+    branches: [main, New-Update-by-amjad]
     tags: ['v*']
 
 permissions:
@@ -55,10 +55,36 @@ jobs:
             dist/*.deb
           if-no-files-found: error
 
-  # macOS runners are billed at a higher rate, so the Mac build only runs for
-  # releases (tags) and manual runs.
+  # Publishes the installers as a GitHub Release named after the version in
+  # package.json, so the client downloads one file from the Releases page.
+  # Runs once per version: bump "version" to publish the next one.
+  release:
+    if: github.event_name == 'push'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Publish release if this version has none yet
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="v$(node -p "require('./package.json').version")"
+          if gh release view "$tag" > /dev/null 2>&1; then
+            echo "Release $tag already exists; nothing to publish."
+          else
+            gh release create "$tag" artifacts/* --target "$GITHUB_SHA" \
+              --title "Rashad Workshop $tag" --notes-file docs/INSTALL.md
+          fi
+
+  # macOS runners are billed at a higher rate, so the Mac build only runs on request.
   build-mac:
-    if: github.event_name != 'push' || startsWith(github.ref, 'refs/tags/')
+    if: github.event_name == 'workflow_dispatch'
     needs: test
     runs-on: macos-latest
     steps:

@@ -87,6 +87,17 @@ function createWindow() {
   mainWindow.loadURL(APP_URL);
 }
 
+/** Daily 8 PM backup; also catches up at launch if the app was closed then. */
+function runScheduledBackup() {
+  try {
+    // Services are briefly absent while a restore/import swaps the database.
+    const file = context?.services?.maintenance.scheduledBackup();
+    if (file) mainWindow?.webContents.send('menu-action', 'backup-done');
+  } catch (error) {
+    console.error('Scheduled backup failed:', error);
+  }
+}
+
 const send = (action) => () => mainWindow?.webContents.send('menu-action', action);
 
 function buildMenu() {
@@ -132,11 +143,8 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(() => {
     protocol.handle('app', handleRequest);
     context = new AppContext({ file: databaseFile(), backupsDir: backupsDir() }).open();
-    try {
-      context.services.maintenance.autoBackup();
-    } catch (error) {
-      console.error('Automatic backup failed:', error);
-    }
+    runScheduledBackup();
+    setInterval(runScheduledBackup, 60 * 1000);
     registerIpc(context);
     buildMenu();
     createWindow();

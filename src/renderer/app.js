@@ -1,6 +1,6 @@
 import { html, render, useEffect, useState } from './lib/preact.js';
 import { call } from './lib/api.js';
-import { setState, useStore, toastError } from './lib/store.js';
+import { setState, useStore, toast, toastError, invalidate } from './lib/store.js';
 import { useKey } from './lib/hooks.js';
 import { Icon } from './lib/icons.js';
 import { Toasts } from './components/Toasts.js';
@@ -76,6 +76,10 @@ function App() {
     if (action === 'new-order') openOrderForm();
     else if (action === 'new-payment') openPayment();
     else if (action === 'search') openPalette();
+    else if (action === 'backup-done') {
+      invalidate();
+      toast('تم حفظ النسخة الاحتياطية اليومية');
+    }
   }), []);
 
   const section = [...SECTIONS, SETTINGS].find((s) => s.id === route.section) || SECTIONS[0];
