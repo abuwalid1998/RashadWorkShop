@@ -60,14 +60,14 @@ function DataSection({ info }) {
 
   return html`<section class="card settings-card">
     <h2>البيانات والنسخ الاحتياطي</h2>
-    <p class="muted">كل البيانات محفوظة في ملف واحد على هذا الجهاز. تُنشأ نسخة احتياطية تلقائية مرة كل يوم عمل.</p>
+    <p class="muted">كل البيانات محفوظة في ملف واحد على هذا الجهاز.</p>
     <dl class="facts">
       <div><dt>الطلبات</dt><dd class="num">${fmt.number(info.orders)}</dd></div>
       <div><dt>البطاريات</dt><dd class="num">${fmt.number(info.batteries)}</dd></div>
       <div><dt>سندات الدفع</dt><dd class="num">${fmt.number(info.receipts)}</dd></div>
       <div><dt>التسويات</dt><dd class="num">${fmt.number(info.settlements)}</dd></div>
       <div><dt>حجم الملف</dt><dd class="num">${fileSize(info.size)}</dd></div>
-      <div><dt>آخر نسخة تلقائية</dt><dd class="num">${info.lastAutoBackup ? fmt.date(info.lastAutoBackup) : '—'}</dd></div>
+      <div><dt>آخر نسخة يومية</dt><dd class="num">${info.lastBackupAt ? `${fmt.date(info.lastBackupAt)} ${fmt.time(info.lastBackupAt)}` : '—'}</dd></div>
     </dl>
     <div class="path-row">
       <${Icon} name="database" size="16" />
@@ -77,7 +77,40 @@ function DataSection({ info }) {
     <div class="settings-actions">
       <${Button} icon="download" onClick=${backup}>حفظ نسخة احتياطية…<//>
       <${Button} icon="upload" onClick=${restore}>استعادة نسخة…<//>
-      <${Button} icon="folder" onClick=${() => call('maintenance.openBackups')}>مجلد النسخ التلقائية<//>
+    </div>
+  </section>`;
+}
+
+function ScheduleSection({ info }) {
+  const chooseFolder = async () => {
+    try {
+      const result = await call('maintenance.chooseBackupFolder');
+      if (!result.changed) return;
+      invalidate();
+      toast('تم تغيير مجلد النسخ الاحتياطية');
+    } catch (error) {
+      toastError(error);
+    }
+  };
+  const toggle = async (enabled) => {
+    await call('maintenance.setBackupEnabled', { enabled }).catch(toastError);
+    invalidate();
+  };
+  return html`<section class="card settings-card">
+    <h2>النسخ الاحتياطي اليومي</h2>
+    <p class="muted">كل يوم الساعة <span class="num">8:00</span> مساءً تُحفظ نسخة كاملة من البيانات في المجلد الذي تختاره، ويُحتفظ بآخر <span class="num">14</span> نسخة. إن كان البرنامج مغلقاً في ذلك الوقت، تُؤخذ النسخة عند تشغيله التالي.</p>
+    ${info.lastBackupError && html`<${Banner} kind="error">تعذّر حفظ النسخة اليومية في المجلد المحدد — تأكد أنه موجود وقابل للكتابة (مثلاً أن القرص الخارجي موصول).<//>`}
+    <label class="check">
+      <input type="checkbox" checked=${info.backupEnabled} onChange=${(e) => toggle(e.target.checked)} />
+      <span>تفعيل النسخ الاحتياطي اليومي</span>
+    </label>
+    <div class="path-row" style=${{ marginTop: '12px' }}>
+      <${Icon} name="folder" size="16" />
+      <code class="selectable">${info.backupFolder}</code>
+      <${Button} size="small" onClick=${() => call('maintenance.openBackups')}>فتح<//>
+    </div>
+    <div class="settings-actions">
+      <${Button} icon="folder" onClick=${chooseFolder}>اختيار مجلد…<//>
     </div>
   </section>`;
 }
@@ -188,6 +221,7 @@ export function Settings() {
     <div class="settings">
       <${ShopSection} />
       ${info && html`<${DataSection} info=${info} />`}
+      ${info && html`<${ScheduleSection} info=${info} />`}
       ${info && html`<${HealthSection} info=${info} />`}
       ${info && html`<${ImportSection} hasData=${info.orders + info.batteries > 0} />`}
       <p class="about faint">ورشة رشاد · الإصدار <span class="num">${version}</span> · يعمل بدون خادم أو اتصال بالإنترنت</p>

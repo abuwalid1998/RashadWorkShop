@@ -68,7 +68,7 @@ The old data is copied once, table by table and column by column, with nothing r
 Row counts and money totals are compared with the source before the new file is used, and
 an existing database is always backed up first.
 
-**Inside the app (easiest):** *الإعدادات → الاستيراد من النظام السابق*. Start MySQL (XAMPP),
+**Inside the app (nothing to install, no commands):** *الإعدادات → الاستيراد من النظام السابق*. Start MySQL (XAMPP),
 keep the defaults (`localhost`, `root`, empty password, database `carworkshop`) and press
 *استيراد من خادم MySQL*. If the server is gone but you have a phpMyAdmin or `mysqldump`
 export, use *استيراد من ملف SQL*.
@@ -114,8 +114,10 @@ repaired automatically.
 | macOS | `~/Library/Application Support/RashadWorkshop` |
 | Linux | `~/.config/RashadWorkshop` |
 
-`workshop.db` is the database; `backups/` holds the automatic daily copies (the latest 14)
-and the copies taken before an import or restore. To move to another computer, save a
+`workshop.db` is the database. Every day at 8 PM the app saves a full backup to the folder
+chosen in *الإعدادات → النسخ الاحتياطي اليومي* (by default `backups/` here), keeping the
+latest 14; if the app was closed at 8 PM the backup is taken the next time it opens.
+`backups/` also holds the copies taken before an import or restore. To move to another computer, save a
 backup from Settings and restore it there. Set `RASHAD_DATA_DIR` to use another folder.
 
 ### Database layout
