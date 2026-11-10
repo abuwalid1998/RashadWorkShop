@@ -55,10 +55,31 @@ jobs:
             dist/*.deb
           if-no-files-found: error
 
-  # macOS runners are billed at a higher rate, so the Mac build only runs for
-  # releases (tags) and manual runs.
+  # A version tag (v2.0.0) publishes the installers as a GitHub Release, so the
+  # client downloads one file from the Releases page.
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "$GITHUB_REF_NAME" artifacts/*
+          --title "Rashad Workshop $GITHUB_REF_NAME"
+          --notes-file docs/INSTALL.md
+
+  # macOS runners are billed at a higher rate, so the Mac build only runs on request.
   build-mac:
-    if: github.event_name != 'push' || startsWith(github.ref, 'refs/tags/')
+    if: github.event_name == 'workflow_dispatch'
     needs: test
     runs-on: macos-latest
     steps:
