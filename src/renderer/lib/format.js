@@ -22,6 +22,9 @@ export function compact(value) {
   return new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(n);
 }
 
+/** Parse what was typed in an amount field into integer cents ("12,5" -> 1250). */
+export const toCents = (value) => Math.round((Number(String(value ?? '').replace(',', '.')) || 0) * 100);
+
 export const percent = (ratio) => `${Math.round((Number(ratio) || 0) * 100)}%`;
 
 const pad = (n) => String(n).padStart(2, '0');

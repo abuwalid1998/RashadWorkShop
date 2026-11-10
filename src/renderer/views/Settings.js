@@ -114,7 +114,7 @@ function ImportReport({ result }) {
   return html`<${Banner} kind="good">
     <strong>تم الاستيراد والتحقق.</strong>
     <ul class="import-report">
-      ${result.tables.map((t) => html`<li key=${t.target}><code>${t.target}</code>: <span class="num">${fmt.number(t.copiedRows)}</span> سجل</li>`)}
+      ${result.tables.map((t) => html`<li key=${t.target}><span class="num">${fmt.number(t.copiedRows)}</span> سجل من جدول <code dir="ltr">${t.target}</code></li>`)}
       ${result.repairedText > 0 && html`<li>أُصلح ترميز <span class="num">${result.repairedText}</span> نص عربي.</li>`}
       ${result.backup && html`<li>حُفظت البيانات السابقة في مجلد النسخ الاحتياطية.</li>`}
     </ul>
@@ -167,7 +167,7 @@ function ImportSection({ hasData }) {
       <${TextInput} form=${form} name="port" label="المنفذ" numeric />
       <${TextInput} form=${form} name="database" label="قاعدة البيانات" numeric />
       <${TextInput} form=${form} name="user" label="اسم المستخدم" numeric />
-      <${TextInput} form=${form} name="password" label="كلمة المرور" type="password" numeric placeholder="فارغة في XAMPP" />
+      <${TextInput} form=${form} name="password" label="كلمة المرور" type="password" placeholder="تُترك فارغة مع XAMPP" />
     </div>
     <div class="import-options">
       ${toggle('recalculateRemaining', 'إعادة احتساب المبلغ المتبقي', 'النظام السابق كان يطرح كل دفعة لاحقة مرتين. فعّل الخيار ليُحفظ المتبقي = الإجمالي − المدفوع.')}

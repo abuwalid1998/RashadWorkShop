@@ -1,5 +1,5 @@
 'use strict';
-const { AppError, notFound } = require('../core/errors');
+const { notFound } = require('../core/errors');
 const { createValidator } = require('../core/validate');
 const { SERVICE_ITEMS, PRICE_COLUMNS, orderLines } = require('../core/catalog');
 const { toCents, fromCents, sum } = require('../core/money');

@@ -8,7 +8,7 @@
   "private": true,
   "main": "src/main/main.js",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "start": "electron .",
@@ -86,6 +86,7 @@
       "category": "Office",
       "maintainer": "Rashad Workshop",
       "artifactName": "RashadWorkshop-${version}-${arch}.${ext}"
-    }
+    },
+    "publish": null
   }
 }

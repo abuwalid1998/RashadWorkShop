@@ -6,7 +6,7 @@ import { Sheet, useSheet } from './Sheet.js';
 import { SuggestInput } from './Suggest.js';
 import { Button, TextInput, Field, Banner, Money, useForm, cx } from './ui.js';
 
-const cents = (value) => Math.round((Number(String(value ?? '').replace(',', '.')) || 0) * 100);
+const cents = fmt.toCents;
 
 function initialValues(order) {
   const catalog = getState().catalog;

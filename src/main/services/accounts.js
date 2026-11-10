@@ -95,11 +95,11 @@ function createAccountsService(db, payments) {
    */
   function get(key, { vehicle = '', from = '', to = '' } = {}) {
     const accountKey = String(key ?? '');
-    const all = db.all('SELECT * FROM account_items WHERE account_key = ? ORDER BY date ASC, id ASC', accountKey);
-    if (!all.length) throw notFound('الحساب');
+    const records = db.all('SELECT * FROM account_items WHERE account_key = ? ORDER BY date ASC, id ASC', accountKey);
+    if (!records.length) throw notFound('الحساب');
 
     const wanted = vehicle ? vehicleKey(vehicle) : '';
-    const scoped = wanted ? all.filter((item) => item.vehicle_key === wanted) : all;
+    const scoped = wanted ? records.filter((item) => item.vehicle_key === wanted) : records;
 
     const serviceRows = new Map(
       db.all(`SELECT * FROM car_service_fixed WHERE order_id IN (
@@ -161,9 +161,9 @@ function createAccountsService(db, payments) {
       .filter((c) => kinds.includes(c.kind))
       .reduce((acc, c) => acc + toCents(c.amount), 0));
 
-    const latest = all[all.length - 1];
-    const vehicles = [...new Map(all.map((item) => [item.vehicle_key, item])).values()].map((item) => {
-      const own = all.filter((i) => i.vehicle_key === item.vehicle_key);
+    const latest = records[records.length - 1];
+    const vehicles = [...new Map(records.map((item) => [item.vehicle_key, item])).values()].map((item) => {
+      const own = records.filter((i) => i.vehicle_key === item.vehicle_key);
       const lastService = [...own].reverse().find((i) => i.source === 'service');
       return {
         vehicle_id: own[own.length - 1].vehicle_id,
@@ -180,10 +180,10 @@ function createAccountsService(db, payments) {
     return {
       key: accountKey,
       name: latest.customer_name,
-      phone: [...all].reverse().find((i) => i.phone_number)?.phone_number || '',
+      phone: [...records].reverse().find((i) => i.phone_number)?.phone_number || '',
       scope: { vehicle: vehicle || '', from, to },
       vehicles,
-      first_date: all[0].date,
+      first_date: records[0].date,
       last_date: latest.date,
       totals: {
         visits: items.filter((i) => i.source === 'service').length,
