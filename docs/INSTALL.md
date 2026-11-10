@@ -4,12 +4,12 @@
 
 ## التثبيت (ويندوز 10 / 11)
 
-1. نزّل الملف **`RashadWorkshop-Setup-2.0.1.exe`** وشغّله.
+1. نزّل الملف **`RashadWorkshop-Setup-2.0.2.exe`** وشغّله.
 2. إذا ظهرت رسالة «Windows protected your PC» اضغط **More info** ثم **Run anyway**
    (تظهر لأن البرنامج غير موقّع رقمياً).
 3. اضغط **Install**. يُنشأ اختصار «Rashad Workshop» على سطح المكتب.
 
-بديل بدون تثبيت: الملف **`RashadWorkshop-Portable-2.0.1.exe`** يعمل مباشرة بالنقر عليه.
+بديل بدون تثبيت: الملف **`RashadWorkshop-Portable-2.0.2.exe`** يعمل مباشرة بالنقر عليه.
 
 ## نقل البيانات من النظام القديم (مرة واحدة)
 
@@ -31,7 +31,7 @@
 
 ---
 
-**English:** run `RashadWorkshop-Setup-2.0.1.exe` (choose *More info → Run anyway* on the
+**English:** run `RashadWorkshop-Setup-2.0.2.exe` (choose *More info → Run anyway* on the
 SmartScreen prompt), or use the portable exe with no installation. Import the old data
 once from *Settings → Import from the previous system*, then pick a daily-backup folder in
 Settings. Nothing else needs to be installed.

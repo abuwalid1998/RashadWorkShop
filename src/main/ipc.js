@@ -43,6 +43,7 @@ function createHandlers(context) {
     'orders.create': (input) => services().orders.create(input),
     'orders.update': ({ id, ...input }) => services().orders.update(id, input),
     'orders.remove': ({ id }) => services().orders.remove(id),
+    'orders.oilTypes': () => services().orders.oilTypes(),
     'orders.lastForVehicle': ({ vehicle }) => services().orders.lastForVehicle(vehicle),
 
     'batteries.list': (params) => services().batteries.list(params),

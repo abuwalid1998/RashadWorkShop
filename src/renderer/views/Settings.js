@@ -224,7 +224,8 @@ export function Settings() {
       ${info && html`<${ScheduleSection} info=${info} />`}
       ${info && html`<${HealthSection} info=${info} />`}
       ${info && html`<${ImportSection} hasData=${info.orders + info.batteries > 0} />`}
-      <p class="about faint">ورشة رشاد · الإصدار <span class="num">${version}</span> · يعمل بدون خادم أو اتصال بالإنترنت</p>
+      <p class="about faint">ورشة رشاد · الإصدار <span class="num">${version}</span> · يعمل بدون خادم أو اتصال بالإنترنت
+        <br />تطوير <span lang="en" dir="ltr">Amjad Khaliliah</span></p>
     </div>
   <//>`;
 }
